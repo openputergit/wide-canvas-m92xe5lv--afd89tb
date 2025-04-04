@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Browser API Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-lg shadow-lg p-6">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold text-gray-800">File Browser</h1>
+            <div class="flex items-center gap-2">
+                <input type="text" id="token" placeholder="Enter JWT Token" class="border rounded px-3 py-1">
+                <button onclick="authenticate()" class="bg-blue-500 text-white px-4 py-1 rounded hover:bg-blue-600">
+                    Authenticate
+                </button>
+            </div>
+        </div>
+
+        <div id="fileList" class="mb-6">
+            <!-- Files will be loaded here -->
+        </div>
+
+        <div class="flex justify-between items-center">
+            <div class="flex gap-2">
+                <button id="prevBtn" onclick="previousPage()" class="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 disabled:opacity-50">
+                    Previous
+                </button>
+                <button id="nextBtn" onclick="nextPage()" class="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 disabled:opacity-50">
+                    Next
+                </button>
+            </div>
+            <span id="pageInfo" class="text-gray-600">Page 1 (1-50)</span>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentPage = 1;
+let token = '';
+const itemsPerPage = 50;
+
+async function authenticate() {
+    token = document.getElementById('token').value;
+    await loadFiles(1);
+}
+
+async function loadFiles(page) {
+    if (!token) {
+        alert('Please authenticate first!');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/files?page=${page}&pageSize=${itemsPerPage}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch files');
+        }
+
+        const data = await response.json();
+        displayFiles(data.files);
+        updatePagination(data.totalFiles);
+        currentPage = page;
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to load files. Please check your authentication.');
+    }
+}
+
+function displayFiles(files) {
+    const fileList = document.getElementById('fileList');
+    fileList.innerHTML = '';
+
+    const table = document.createElement('table');
+    table.className = 'w-full';
+    
+    // Table header
+    const header = `
+        <thead>
+            <tr class="bg-gray-100">
+                <th class="text-left p-3">File Name</th>
+                <th class="text-left p-3">Size</th>
+                <th class="text-left p-3">Actions</th>
+            </tr>
+        </thead>
+    `;
+    table.innerHTML = header;
+
+    // Table body
+    const tbody = document.createElement('tbody');
+    files.forEach(file => {
+        const row = document.createElement('tr');
+        row.className = 'border-b hover:bg-gray-50';
+        row.innerHTML = `
+            <td class="p-3">${file.name}</td>
+            <td class="p-3">${formatFileSize(file.size)}</td>
+            <td class="p-3">
+                <button onclick="downloadFile('${file.path}')" 
+                        class="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">
+                    <i class="bi bi-download"></i> Download
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    fileList.appendChild(table);
+}
+
+async function downloadFile(filePath) {
+    try {
+        const response = await fetch(`/api/files/download?path=${encodeURIComponent(filePath)}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to download file');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filePath.split('/').pop();
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to download file');
+    }
+}
+
+function updatePagination(totalFiles) {
+    const totalPages = Math.ceil(totalFiles / itemsPerPage);
+    const start = ((currentPage - 1) * itemsPerPage) + 1;
+    const end = Math.min(currentPage * itemsPerPage, totalFiles);
+
+    document.getElementById('pageInfo').textContent = 
+        `Page ${currentPage} (${start}-${end} of ${totalFiles})`;
+    
+    document.getElementById('prevBtn').disabled = currentPage === 1;
+    document.getElementById('nextBtn').disabled = currentPage === totalPages;
+}
+
+function previousPage() {
+    if (currentPage > 1) {
+        loadFiles(currentPage - 1);
+    }
+}
+
+function nextPage() {
+    loadFiles(currentPage + 1);
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+</script>
+
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
